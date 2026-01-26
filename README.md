@@ -2,7 +2,7 @@
 
 ## Overview
 
-A 3-day hackathon project focused on **world models for robotics**. The goal is to create a **2D robotic arm environment** where the agent can **pick up objects and plan actions using mental simulation in latent space**. This project demonstrates **how a robot can “imagine” trajectories before acting**, using a Variational Autoencoder (VAE) and a dynamics model.
+A 2-day hackathon project focused on **world models for robotics**. The goal is to create a **2D robotic arm environment** where the agent can **pick up objects and plan actions using mental simulation in latent space**. This project demonstrates **how a robot can “imagine” trajectories before acting**, using a Variational Autoencoder (VAE) and a dynamics model.
 
 ---
 
@@ -59,4 +59,4 @@ By the end of the hackathon, you will have:
 
 ## 🔗 Outcome
 
-By the end of the hackathon, you will have a **functional world model** for a 2D robotic arm — a **proof-of-concept for mental simulation and planning**.
+By the end of the hackathon, we will have a **functional world model** for a 2D robotic arm — a **proof-of-concept for mental simulation and planning**.
