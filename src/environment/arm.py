@@ -2,6 +2,8 @@ import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 from typing import Tuple, Dict, Any, Optional
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 
 
 class Arm3(gym.Env):
@@ -14,13 +16,14 @@ class Arm3(gym.Env):
     Action = [dq1, dq2, dq3]
         - small changes to joint angles
 
-    No rendering. Just state transitions and a simple reward.
+    Rendering modes: "human" (interactive window), "rgb_array" (numpy array)
     """
 
-    metadata = {"render_modes": []}
+    metadata = {"render_modes": ["human", "rgb_array"]}
 
     def __init__(
         self,
+        render_mode: Optional[str] = None,
         joint_limit: float = np.pi / 2,   # each joint in [-pi/2, pi/2]
         max_dq: float = 0.05,             # max change per step (radians)
         workspace_radius: float = 1.5,
@@ -28,10 +31,15 @@ class Arm3(gym.Env):
     ):
         super().__init__()
 
+        self.render_mode = render_mode
         self.n_joints = 3
         self.max_dq = float(max_dq)
         self.workspace_radius = float(workspace_radius)
         self.max_episode_steps = int(max_episode_steps)
+
+        # Rendering
+        self.fig = None
+        self.ax = None
 
         # --- Spaces ---
 
@@ -221,6 +229,91 @@ class Arm3(gym.Env):
 
         return True
 
+    # ------------------ rendering ------------------
+
+    def render(self):
+        """
+        Render the current state of the environment.
+        
+        Returns:
+            - If render_mode is "rgb_array": returns numpy array of shape (H, W, 3)
+            - If render_mode is "human": displays the figure and returns None
+        """
+        if self.render_mode is None:
+            return None
+
+        # Create figure if it doesn't exist
+        if self.fig is None:
+            self.fig, self.ax = plt.subplots(figsize=(8, 8))
+            if self.render_mode == "human":
+                plt.ion()  # Interactive mode for human rendering
+
+        self.ax.clear()
+        
+        # Set up the plot
+        r = self.workspace_radius
+        self.ax.set_xlim(-r, r)
+        self.ax.set_ylim(-r, r)
+        self.ax.set_aspect('equal')
+        self.ax.grid(True, alpha=0.3)
+        self.ax.set_xlabel('X')
+        self.ax.set_ylabel('Y')
+        self.ax.set_title(f'3-Link Arm (Step {self.step_count})')
+
+        # Draw workspace boundary
+        workspace_circle = plt.Circle((0, 0), r, color='gray', fill=False, 
+                                     linestyle='--', linewidth=1, alpha=0.5)
+        self.ax.add_patch(workspace_circle)
+
+        # Draw the arm
+        joint_positions = self._joint_positions(self.q)
+        
+        # Draw links
+        for i in range(len(joint_positions) - 1):
+            x_vals = [joint_positions[i][0], joint_positions[i+1][0]]
+            y_vals = [joint_positions[i][1], joint_positions[i+1][1]]
+            self.ax.plot(x_vals, y_vals, 'o-', linewidth=3, markersize=8, 
+                        color='darkblue', label='Arm' if i == 0 else '')
+
+        # Draw base (origin)
+        self.ax.plot(0, 0, 'ks', markersize=12, label='Base')
+
+        # Draw end-effector
+        end_effector = joint_positions[-1]
+        self.ax.plot(end_effector[0], end_effector[1], 'ro', markersize=12, 
+                    label='End-Effector')
+
+        # Draw object
+        self.ax.plot(self.obj_pos[0], self.obj_pos[1], 'bo', markersize=15, 
+                    label='Object', alpha=0.7)
+
+        # Draw goal
+        self.ax.plot(self.goal_pos[0], self.goal_pos[1], 'g*', markersize=20, 
+                    label='Goal')
+
+        # Calculate and display distance
+        dist = float(np.linalg.norm(self.obj_pos - self.goal_pos))
+        self.ax.text(0.02, 0.98, f'Distance: {dist:.3f}', 
+                    transform=self.ax.transAxes, 
+                    verticalalignment='top',
+                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+
+        self.ax.legend(loc='upper right')
+
+        if self.render_mode == "human":
+            self.fig.canvas.draw()
+            self.fig.canvas.flush_events()
+            plt.pause(0.001)
+            return None
+        elif self.render_mode == "rgb_array":
+            # Convert canvas to RGB array
+            self.fig.canvas.draw()
+            data = np.frombuffer(self.fig.canvas.tostring_rgb(), dtype=np.uint8)
+            data = data.reshape(self.fig.canvas.get_width_height()[::-1] + (3,))
+            return data
 
     def close(self):
-        pass
+        if self.fig is not None:
+            plt.close(self.fig)
+            self.fig = None
+            self.ax = None
