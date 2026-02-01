@@ -28,11 +28,13 @@ class Arm3(gym.Env):
         max_dq: float = 0.05,             # max change per step (radians)
         workspace_radius: float = 1.5,
         max_episode_steps: int = 200,
+        grasp_threshold: float = 0.15,
     ):
         super().__init__()
 
         self.render_mode = render_mode
         self.n_joints = 3
+        self.grasp_threshold = float(grasp_threshold)
         self.max_dq = float(max_dq)
         self.workspace_radius = float(workspace_radius)
         self.max_episode_steps = int(max_episode_steps)
@@ -43,15 +45,15 @@ class Arm3(gym.Env):
 
         # --- Spaces ---
 
-        # Per‑joint angle limits
-        joint1_low = np.pi / 6.0         # ~30 degrees
-        joint1_high = 5.0 * np.pi / 6.0  # ~150 degrees
+        # Per-joint angle limits (relative to previous link)
+        joint1_low = np.pi / 6.0         # 30 degrees
+        joint1_high = 5.0 * np.pi / 6.0  # 150 degrees
 
-        joint2_low = np.pi / 4.0        # 45 degrees
-        joint2_high = (7.0 * np.pi) / 4.0    # 135 degrees
+        joint2_low = -np.pi / 2.0        # -90 degrees (fold inward)
+        joint2_high = np.pi / 2.0        #  90 degrees (fold outward)
 
-        joint3_low = np.pi / 4.0
-        joint3_high = (7.0 * np.pi) / 4.0 
+        joint3_low = -np.pi / 2.0        # -90 degrees
+        joint3_high = np.pi / 2.0        #  90 degrees
 
         self.joint_low = np.array(
             [joint1_low, joint2_low, joint3_low], dtype=np.float32
@@ -96,6 +98,7 @@ class Arm3(gym.Env):
         self.q = None            # joint angles (3,)
         self.obj_pos = None      # (2,)
         self.goal_pos = None     # (2,)
+        self.grasping = False    # is the arm holding the object?
         self.step_count = 0
 
     # ------------------ core API ------------------
@@ -107,16 +110,21 @@ class Arm3(gym.Env):
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         super().reset(seed=seed)
 
-        # Random joint angles in [-joint_limit, joint_limit]
-        self.q = self.np_random.uniform(
-            low=self.joint_low,
-            high=self.joint_high,
-        ).astype(np.float32)
+        # Random valid joint angles (reject self-collisions)
+        while True:
+            q = self.np_random.uniform(
+                low=self.joint_low,
+                high=self.joint_high,
+            ).astype(np.float32)
+            if self.is_valid_q(q):
+                break
+        self.q = q
 
-        # Random object and goal in workspace disc
-        self.obj_pos = self._sample_in_disc(self.workspace_radius).astype(np.float32)
-        self.goal_pos = self._sample_in_disc(self.workspace_radius).astype(np.float32)
+        # Object and goal: sample reachable positions (end-effector of random valid configs)
+        self.obj_pos = self._sample_reachable_pos().astype(np.float32)
+        self.goal_pos = self._sample_reachable_pos().astype(np.float32)
 
+        self.grasping = False
         self.step_count = 0
 
         return self._get_obs(), {}
@@ -129,19 +137,38 @@ class Arm3(gym.Env):
         action = np.clip(action, -self.max_dq, self.max_dq).astype(np.float32)
 
         # Update joint angles and clip to limits
-        self.q = np.clip(self.q + action, self.joint_low, self.joint_high)
+        new_q = np.clip(self.q + action, self.joint_low, self.joint_high)
+
+        # Only accept if no self-collision
+        if self.is_valid_q(new_q):
+            self.q = new_q
 
         self.step_count += 1
 
-        # Simple reward: negative distance between object and goal
-        dist = float(np.linalg.norm(self.obj_pos - self.goal_pos))
-        reward = -dist
+        # Grasping: if end-effector is close to object, grab it
+        ee_pos = self._joint_positions(self.q)[-1]  # end-effector position
+        ee_to_obj = float(np.linalg.norm(ee_pos - self.obj_pos))
 
-        # Termination when object "reaches" goal (purely geometric here)
-        terminated = dist < 0.05
+        if ee_to_obj < self.grasp_threshold:
+            self.grasping = True
+
+        # If grasping, object follows the end-effector
+        if self.grasping:
+            self.obj_pos = ee_pos.copy()
+
+        # Reward: negative distance between object and goal
+        dist_obj_goal = float(np.linalg.norm(self.obj_pos - self.goal_pos))
+        reward = -dist_obj_goal
+
+        # Termination when object reaches goal
+        terminated = dist_obj_goal < 0.05
         truncated = self.step_count >= self.max_episode_steps
 
-        info = {"distance_obj_goal": dist}
+        info = {
+            "distance_obj_goal": dist_obj_goal,
+            "distance_ee_obj": ee_to_obj,
+            "grasping": self.grasping,
+        }
 
         return self._get_obs(), reward, terminated, truncated, info
 
@@ -164,6 +191,15 @@ class Arm3(gym.Env):
         x = r * np.cos(theta)
         y = r * np.sin(theta)
         return np.array([x, y], dtype=np.float32)
+
+    def _sample_reachable_pos(self) -> np.ndarray:
+        """Sample a position the arm can actually reach."""
+        while True:
+            q = self.np_random.uniform(
+                low=self.joint_low, high=self.joint_high,
+            ).astype(np.float32)
+            if self.is_valid_q(q):
+                return self._joint_positions(q)[-1]
 
     # ------------------ geometry / validity ------------------
 
@@ -283,18 +319,27 @@ class Arm3(gym.Env):
         self.ax.plot(end_effector[0], end_effector[1], 'ro', markersize=12, 
                     label='End-Effector')
 
-        # Draw object
-        self.ax.plot(self.obj_pos[0], self.obj_pos[1], 'bo', markersize=15, 
-                    label='Object', alpha=0.7)
+        # Draw object (orange if grasped, blue if free)
+        obj_color = '#e67e22' if self.grasping else '#3498db'
+        obj_label = 'Object (grasped)' if self.grasping else 'Object'
+        self.ax.plot(self.obj_pos[0], self.obj_pos[1], 'o', color=obj_color,
+                    markersize=15, label=obj_label, zorder=5)
 
         # Draw goal
-        self.ax.plot(self.goal_pos[0], self.goal_pos[1], 'g*', markersize=20, 
+        self.ax.plot(self.goal_pos[0], self.goal_pos[1], 'g*', markersize=20,
                     label='Goal')
 
-        # Calculate and display distance
+        # Draw grasp radius around end-effector
+        grasp_circle = plt.Circle((end_effector[0], end_effector[1]),
+                                  self.grasp_threshold, color='red',
+                                  fill=False, linestyle=':', linewidth=1, alpha=0.4)
+        self.ax.add_patch(grasp_circle)
+
+        # Info text
         dist = float(np.linalg.norm(self.obj_pos - self.goal_pos))
-        self.ax.text(0.02, 0.98, f'Distance: {dist:.3f}', 
-                    transform=self.ax.transAxes, 
+        status = "GRASPING" if self.grasping else "free"
+        self.ax.text(0.02, 0.98, f'Obj→Goal: {dist:.3f}\nStatus: {status}',
+                    transform=self.ax.transAxes,
                     verticalalignment='top',
                     bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
 
