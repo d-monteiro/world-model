@@ -38,21 +38,26 @@ def main():
     states = np.array(states)
     print(f"Generated {len(states)} states with shape {states.shape}")
     
-    # Create VAE (untrained, just for visualization structure)
-    # In practice, you'd load a trained model
-    latent_dim = 2  # Use 2D latent space for direct visualization
-    vae = VAE(input_dim=7, latent_dim=latent_dim, hidden_dim=64)
+    # Load trained VAE
+    latent_dim = 4
+    vae = VAE(input_dim=7, latent_dim=latent_dim, hidden_dim=128)
+    checkpoint_path = ROOT / "src" / "checkpoints" / "vae.pt"
+    vae.load_state_dict(torch.load(checkpoint_path, weights_only=True))
     vae.eval()
-    
+    print(f"Loaded trained VAE from {checkpoint_path}")
+
     # Encode states to latent space
     print("Encoding states to latent space...")
     with torch.no_grad():
         states_tensor = torch.FloatTensor(states)
         mu, logvar = vae.encode(states_tensor)
-        # Use mean of distribution for visualization
-        latent_codes = mu.numpy()
-    
-    print(f"Latent codes shape: {latent_codes.shape}")
+        latent_codes_full = mu.numpy()
+
+    # PCA to project 4D latent → 2D for visualization
+    pca = PCA(n_components=2)
+    latent_codes = pca.fit_transform(latent_codes_full)
+    print(f"Latent codes shape: {latent_codes_full.shape} → PCA → {latent_codes.shape}")
+    print(f"PCA explained variance: {pca.explained_variance_ratio_.round(3)}")
     
     # Visualize latent space
     plt.style.use('dark_background')
