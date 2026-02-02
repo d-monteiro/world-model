@@ -1,0 +1,66 @@
+<mujoco model="three_joint_arm">
+  <option timestep="0.01" gravity="0 0 -9.81"/>
+
+  <default>
+    <joint damping="1.0" armature="0.1"/>
+    <geom contype="1" conaffinity="1" friction="1 0.5 0.01"/>
+  </default>
+
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="512"/>
+    <texture name="floor_tex" type="2d" builtin="checker" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3" width="512" height="512"/>
+    <material name="floor_mat" texture="floor_tex" texrepeat="5 5" reflectance="0.2"/>
+    <material name="arm_mat" rgba="0.6 0.6 0.8 1"/>
+    <material name="object_mat" rgba="0.8 0.2 0.2 1"/>
+    <material name="target_mat" rgba="0.2 0.8 0.2 0.5"/>
+  </asset>
+
+  <worldbody>
+    <!-- Floor -->
+    <geom name="floor" type="plane" size="2 2 0.1" material="floor_mat"/>
+
+    <!-- Light -->
+    <light name="light0" pos="0 0 3" dir="0 0 -1" diffuse="1 1 1" specular="0.3 0.3 0.3"/>
+
+    <!-- Robot arm base (fixed to world, no free joint) -->
+    <body name="base" pos="0 0 0.05">
+      <geom name="base_geom" type="cylinder" size="0.08 0.05" material="arm_mat" mass="5"/>
+
+      <!-- Link 1: rotates around Z axis (base rotation) -->
+      <body name="link1" pos="0 0 0.1">
+        <joint name="joint1" type="hinge" axis="0 0 1" range="-180 180"/>
+        <geom name="link1_geom" type="capsule" fromto="0 0 0 0 0 0.3" size="0.04" material="arm_mat" mass="1"/>
+
+        <!-- Link 2: rotates around Y axis (shoulder) -->
+        <body name="link2" pos="0 0 0.3">
+          <joint name="joint2" type="hinge" axis="0 1 0" range="-120 120"/>
+          <geom name="link2_geom" type="capsule" fromto="0 0 0 0.3 0 0" size="0.035" material="arm_mat" mass="0.8"/>
+
+          <!-- Link 3: rotates around Y axis (elbow) -->
+          <body name="link3" pos="0.3 0 0">
+            <joint name="joint3" type="hinge" axis="0 1 0" range="-120 120"/>
+            <geom name="link3_geom" type="capsule" fromto="0 0 0 0.25 0 0" size="0.03" material="arm_mat" mass="0.5"/>
+
+            <!-- End effector site -->
+            <site name="end_effector" pos="0.25 0 0" size="0.02" rgba="1 1 0 1"/>
+          </body>
+        </body>
+      </body>
+    </body>
+
+    <!-- Manipulable object (free joint for full 6DOF movement) -->
+    <body name="object" pos="0.3 0.2 0.05">
+      <joint name="object_joint" type="free"/>
+      <geom name="object_geom" type="box" size="0.025 0.025 0.025" material="object_mat" mass="0.1"/>
+    </body>
+
+    <!-- Target position (visual only) -->
+    <site name="target" pos="0.4 -0.2 0.1" size="0.03" rgba="0.2 0.8 0.2 0.5"/>
+  </worldbody>
+
+  <actuator>
+    <motor name="motor1" joint="joint1" ctrlrange="-1 1" gear="150"/>
+    <motor name="motor2" joint="joint2" ctrlrange="-1 1" gear="150"/>
+    <motor name="motor3" joint="joint3" ctrlrange="-1 1" gear="150"/>
+  </actuator>
+</mujoco>
