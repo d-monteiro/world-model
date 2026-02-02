@@ -161,7 +161,7 @@ class Arm3(gym.Env):
         reward = -dist_obj_goal
 
         # Termination when object reaches goal
-        terminated = dist_obj_goal < 0.05
+        terminated = dist_obj_goal < 0.10
         truncated = self.step_count >= self.max_episode_steps
 
         info = {
@@ -193,13 +193,16 @@ class Arm3(gym.Env):
         return np.array([x, y], dtype=np.float32)
 
     def _sample_reachable_pos(self) -> np.ndarray:
-        """Sample a position the arm can actually reach."""
+        """Sample a position the arm can reach without extreme extension."""
+        max_dist = 0.75 * sum(self.link_lengths)  # avoid near-singular fringe
         while True:
             q = self.np_random.uniform(
                 low=self.joint_low, high=self.joint_high,
             ).astype(np.float32)
             if self.is_valid_q(q):
-                return self._joint_positions(q)[-1]
+                pos = self._joint_positions(q)[-1]
+                if np.linalg.norm(pos) <= max_dist:
+                    return pos
 
     # ------------------ geometry / validity ------------------
 
