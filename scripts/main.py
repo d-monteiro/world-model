@@ -13,44 +13,15 @@ If the Red arm follows the Blue arm closely, your World Model works!
 """
 
 import sys
-import torch
-import numpy as np
-import matplotlib.pyplot as plt
 from pathlib import Path
+import numpy as np
+import torch
 
 # Add root to path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.environment.arm import Arm3
-from src.models.vae import VAE
-from src.models.mdn_rnn import MDNRNN
-
-def get_latent_state(vae, env_obs):
-    """Encodes an observation (7D) into latent state z (2D) + context (4D)."""
-    # obs: [q1, q2, q3, ox, oy, gx, gy]
-    obs_tensor = torch.FloatTensor(env_obs).unsqueeze(0) # (1, 7)
-    
-    # Extract arm state for VAE
-    arm_state = obs_tensor[:, :3] # (1, 3)
-    
-    # Encode
-    with torch.no_grad():
-        mu, _ = vae.encode(arm_state)
-    
-    z = mu.squeeze(0).numpy() # (2,)
-    context = env_obs[3:]     # (4,)
-    
-    return z, context
-
-def decode_latent_state(vae, z):
-    """Decodes latent z (2D) back to joint angles (3D)."""
-    with torch.no_grad():
-        z_tensor = torch.FloatTensor(z).unsqueeze(0)
-        recon = vae.decode(z_tensor)
-    return recon.squeeze(0).numpy() # (3,)
-
-def run_dream_simulation():
     # --- 1. Load Models ---
     device = torch.device('cpu') # Inference is fast enough on CPU
     print(f"Loading models on {device}...")
