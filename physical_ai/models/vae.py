@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-LATENT_DIM = 32
+LATENT_DIM = 8
 INPUT_DIM = 9
 
 

@@ -14,7 +14,7 @@ BATCH_SIZE = 256
 LR = 1e-3
 EPOCHS = 150
 BETA = 0.01
-LATENT_DIM = 32
+LATENT_DIM = 8
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")

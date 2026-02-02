@@ -4,7 +4,7 @@ import math
 import torch
 import torch.nn as nn
 
-LATENT_DIM = 32
+LATENT_DIM = 8
 ACTION_DIM = 3
 HIDDEN_SIZE = 256
 N_GAUSSIANS = 5

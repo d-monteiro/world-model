@@ -1,5 +1,6 @@
 data/
-checkpoints/
+checkpoints/*.pth
+checkpoints/*.pkl
 .venv/
 __pycache__/
 *.pyc
@@ -8,7 +9,6 @@ __pycache__/
 dist/
 build/
 .eggs/
-*.pkl
 *.npy
 *.npz
 .DS_Store
